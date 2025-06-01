@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image, Dimensions, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Dimensions, ScrollView } from 'react-native';
+import * as Speech from 'expo-speech';
 import { useNavigation } from '@react-navigation/native';
 import { CATEGORIES } from '../constants/legalRights';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'; // Assuming you have this installed
@@ -10,6 +11,76 @@ const cardWidth = (width - (cardMargin * 8)) / 2; // Corrected for container pad
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const [currentSpeakingId, setCurrentSpeakingId] = useState(null);
+
+  const speak = (text, id) => {
+    if (currentSpeakingId === id) {
+      Speech.stop();
+      setCurrentSpeakingId(null);
+      return;
+    }
+
+    setCurrentSpeakingId(id);
+    
+    // Clean up the text for better TTS
+    const cleanText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    Speech.speak(cleanText, {
+      language: id.startsWith('en') ? 'en-IN' : 'hi-IN',
+      onDone: () => setCurrentSpeakingId(null),
+      onError: () => setCurrentSpeakingId(null)
+    });
+  };
+
+  useEffect(() => {
+    return () => Speech.stop();
+  }, []);
+
+  const renderTTSIcons = (item) => {
+    const isSpeakingEnglish = currentSpeakingId === `en-${item.id}`;
+    const isSpeakingHindi = currentSpeakingId === `hi-${item.id}`;
+    
+    const englishText = item.title;
+    const hindiText = item.hindiTitle || '';
+    
+    return (
+      <View style={styles.ttsContainer}>
+        <TouchableOpacity 
+          style={[styles.ttsButton, !englishText && styles.disabledButton]}
+          onPress={(e) => {
+            e.stopPropagation();
+            speak(englishText, `en-${item.id}`);
+          }}
+          disabled={!englishText}
+        >
+          <Text style={styles.ttsText}>EN</Text>
+          <MaterialCommunityIcons 
+            name={isSpeakingEnglish ? 'volume-high' : 'volume-medium'} 
+            size={14} 
+            color={englishText ? "#FFD700" : "#666"}
+          />
+        </TouchableOpacity>
+        
+        {hindiText ? (
+          <TouchableOpacity 
+            style={[styles.ttsButton, styles.hindiButton, !hindiText && styles.disabledButton]}
+            onPress={(e) => {
+              e.stopPropagation();
+              speak(hindiText, `hi-${item.id}`);
+            }}
+            disabled={!hindiText}
+          >
+            <Text style={styles.ttsText}>हिं</Text>
+            <MaterialCommunityIcons 
+              name={isSpeakingHindi ? 'volume-high' : 'volume-medium'} 
+              size={14} 
+              color={hindiText ? "#FFD700" : "#666"}
+            />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
 
   // Placeholder for the illustration. Replace with your actual image.
   const renderHeaderImage = () => {
@@ -47,13 +118,22 @@ const HomeScreen = () => {
                 hindiTitle: item.hindiTitle 
               })}
             >
-              <MaterialCommunityIcons 
-                name={item.iconName || 'help-circle-outline'} 
-                size={40} 
-                color="#FFD700" 
-              />
-              <Text style={styles.categoryTitleEnglish}>{item.title}</Text>
-              <Text style={styles.categoryTitleHindi}>{item.hindiTitle}</Text>
+              <View style={styles.cardContent}>
+                <View style={styles.iconContainer}>
+                  <MaterialCommunityIcons 
+                    name={item.iconName || 'help-circle-outline'} 
+                    size={40} 
+                    color="#FFD700" 
+                  />
+                </View>
+                <Text style={styles.categoryTitleEnglish}>{item.title}</Text>
+                {item.hindiTitle && (
+                  <View style={styles.hindiContainer}>
+                    <Text style={styles.categoryTitleHindi}>{item.hindiTitle}</Text>
+                    {renderTTSIcons(item)}
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -135,22 +215,60 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   categoryCard: {
-    backgroundColor: '#801405',
+    width: cardWidth,
+    backgroundColor: '#801405', // Darker red to match theme
     borderRadius: 10,
     padding: 15,
-    marginBottom: 15,
-    width: '48%',
+    margin: cardMargin,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFD700', // Gold border
+    elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 3,
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
+  },
+  cardContent: {
+    alignItems: 'center',
+  },
+  iconContainer: {
+    marginBottom: 10,
+  },
+  ttsContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 6,
+  },
+  hindiContainer: {
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  ttsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  hindiButton: {
+    marginLeft: 4,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  ttsText: {
+    color: '#FFD700',
+    fontSize: 10,
+    marginRight: 2,
+    fontFamily: 'sans-serif-medium',
   },
   categoryTitleEnglish: {
     fontSize: 16,
-    color: '#FFFFFF', // White text for better contrast on card
+    color: '#FFD700', // Gold text
     fontWeight: 'bold',
     textAlign: 'center',
     marginTop: 10,
