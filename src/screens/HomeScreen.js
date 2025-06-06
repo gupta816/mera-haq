@@ -14,16 +14,20 @@ const HomeScreen = () => {
   const [currentSpeakingId, setCurrentSpeakingId] = useState(null);
 
   const speak = (text, id) => {
+    // Stop any currently playing speech
+    Speech.stop();
+    
+    // If clicking the same button that's currently speaking, just stop speaking
     if (currentSpeakingId === id) {
-      Speech.stop();
       setCurrentSpeakingId(null);
       return;
     }
 
-    setCurrentSpeakingId(id);
-    
     // Clean up the text for better TTS
     const cleanText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    // Set the new speaking ID before starting speech
+    setCurrentSpeakingId(id);
     
     Speech.speak(cleanText, {
       language: id.startsWith('en') ? 'en-IN' : 'hi-IN',
@@ -46,35 +50,58 @@ const HomeScreen = () => {
     return (
       <View style={styles.ttsContainer}>
         <TouchableOpacity 
-          style={[styles.ttsButton, !englishText && styles.disabledButton]}
+          style={[
+            styles.ttsButton, 
+            !englishText && styles.disabledButton,
+            (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingEnglish && styles.inactiveButton
+          ]}
           onPress={(e) => {
             e.stopPropagation();
             speak(englishText, `en-${item.id}`);
           }}
-          disabled={!englishText}
+          disabled={!englishText || (currentSpeakingId && currentSpeakingId !== `en-${item.id}`)}
         >
-          <Text style={styles.ttsText}>EN</Text>
+          <Text style={[
+            styles.ttsText,
+            (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingEnglish && styles.inactiveText
+          ]}>EN</Text>
           <MaterialCommunityIcons 
             name={isSpeakingEnglish ? 'volume-high' : 'volume-medium'} 
             size={14} 
-            color={englishText ? "#FFD700" : "#666"}
+            color={
+              !englishText ? "#666" : 
+              isSpeakingEnglish ? "#FFD700" :
+              (currentSpeakingId && currentSpeakingId !== `en-${item.id}`) ? "#999" : "#FFD700"
+            }
           />
         </TouchableOpacity>
         
         {hindiText ? (
           <TouchableOpacity 
-            style={[styles.ttsButton, styles.hindiButton, !hindiText && styles.disabledButton]}
+            style={[
+              styles.ttsButton, 
+              styles.hindiButton, 
+              !hindiText && styles.disabledButton,
+              (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingHindi && styles.inactiveButton
+            ]}
             onPress={(e) => {
               e.stopPropagation();
               speak(hindiText, `hi-${item.id}`);
             }}
-            disabled={!hindiText}
+            disabled={!hindiText || (currentSpeakingId && currentSpeakingId !== `hi-${item.id}`)}
           >
-            <Text style={styles.ttsText}>हिं</Text>
+            <Text style={[
+              styles.ttsText,
+              (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingHindi && styles.inactiveText
+            ]}>हिं</Text>
             <MaterialCommunityIcons 
               name={isSpeakingHindi ? 'volume-high' : 'volume-medium'} 
               size={14} 
-              color={hindiText ? "#FFD700" : "#666"}
+              color={
+                !hindiText ? "#666" : 
+                isSpeakingHindi ? "#FFD700" :
+                (currentSpeakingId && currentSpeakingId !== `hi-${item.id}`) ? "#999" : "#FFD700"
+              }
             />
           </TouchableOpacity>
         ) : null}
@@ -265,6 +292,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginRight: 2,
     fontFamily: 'sans-serif-medium',
+  },
+  inactiveButton: {
+    opacity: 0.5,
+  },
+  inactiveText: {
+    color: '#999',
   },
   categoryTitleEnglish: {
     fontSize: 16,

@@ -9,20 +9,23 @@ const CategoryScreen = ({ route }) => {
   const [currentSpeakingId, setCurrentSpeakingId] = useState(null);
 
   const speak = (text, id) => {
+    // Stop any currently playing speech
+    Speech.stop();
+    
+    // If clicking the same button that's currently speaking, just stop speaking
     if (currentSpeakingId === id) {
-      Speech.stop();
       setSpeaking(false);
       setCurrentSpeakingId(null);
       return;
     }
 
+    // Clean up the text for TTS
+    const cleanText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    
     setSpeaking(true);
     setCurrentSpeakingId(id);
     
-    // Ensure we have clean text for TTS
-    const cleanText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-    
-    Speech.speak(text, {
+    Speech.speak(cleanText, {
       language: id.startsWith('en') ? 'en-IN' : 'hi-IN',
       onDone: () => {
         setSpeaking(false);
@@ -49,39 +52,61 @@ const CategoryScreen = ({ route }) => {
     // Combine title and description for full content
     const englishText = `${item.title}. ${item.description || ''}`.trim();
     const hindiText = `${item.hindiTitle || ''} ${item.hindiDescription || ''}`.trim();
+    const hasHindiContent = !!(item.hindiTitle || item.hindiDescription);
     
     return (
       <View style={styles.ttsContainer}>
         <TouchableOpacity 
-          style={styles.ttsButton}
+          style={[
+            styles.ttsButton,
+            (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingEnglish && styles.inactiveButton
+          ]}
           onPress={(e) => {
             e.stopPropagation();
             speak(englishText, `en-${index}`);
           }}
-          disabled={!englishText}
+          disabled={!englishText || (currentSpeakingId && currentSpeakingId !== `en-${index}`)}
         >
-          <Text style={styles.ttsText}>EN</Text>
+          <Text style={[
+            styles.ttsText,
+            (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingEnglish && styles.inactiveText
+          ]}>EN</Text>
           <MaterialCommunityIcons 
             name={isSpeakingEnglish ? 'volume-high' : 'volume-medium'} 
             size={16} 
-            color={englishText ? "#FFD700" : "#666"}
+            color={
+              !englishText ? "#666" : 
+              isSpeakingEnglish ? "#FFD700" :
+              (currentSpeakingId && currentSpeakingId !== `en-${index}`) ? "#999" : "#FFD700"
+            }
           />
         </TouchableOpacity>
         
-        {(item.hindiTitle || item.hindiDescription) && (
+        {hasHindiContent && (
           <TouchableOpacity 
-            style={[styles.ttsButton, styles.hindiButton]}
+            style={[
+              styles.ttsButton, 
+              styles.hindiButton,
+              (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingHindi && styles.inactiveButton
+            ]}
             onPress={(e) => {
               e.stopPropagation();
               speak(hindiText, `hi-${index}`);
             }}
-            disabled={!hindiText}
+            disabled={!hindiText || (currentSpeakingId && currentSpeakingId !== `hi-${index}`)}
           >
-            <Text style={styles.ttsText}>हिं</Text>
+            <Text style={[
+              styles.ttsText,
+              (isSpeakingEnglish || isSpeakingHindi) && !isSpeakingHindi && styles.inactiveText
+            ]}>हिं</Text>
             <MaterialCommunityIcons 
               name={isSpeakingHindi ? 'volume-high' : 'volume-medium'} 
               size={16} 
-              color={hindiText ? "#FFD700" : "#666"}
+              color={
+                !hindiText ? "#666" : 
+                isSpeakingHindi ? "#FFD700" :
+                (currentSpeakingId && currentSpeakingId !== `hi-${index}`) ? "#999" : "#FFD700"
+              }
             />
           </TouchableOpacity>
         )}
@@ -192,6 +217,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginRight: 3,
     fontFamily: 'sans-serif-medium',
+  },
+  inactiveButton: {
+    opacity: 0.5,
+  },
+  inactiveText: {
+    color: '#999',
   },
   itemTitle: {
     fontSize: 20,
