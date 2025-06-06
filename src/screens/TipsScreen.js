@@ -1,29 +1,94 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as Speech from 'expo-speech';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DAILY_TIPS } from '../constants/tips';
 
 const { width } = Dimensions.get('window');
 const cardWidth = width - 40; // 20px margin on each side
 
+// 24 hours in milliseconds
+const TIPS_UPDATE_INTERVAL = 24 * 60 * 60 * 1000;
+
+// Function to get random tips
+const getRandomTips = (tips, count) => {
+  const shuffled = [...tips].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, Math.min(count, tips.length));
+};
+
 export default function TipsScreen() {
-  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const [tips, setTips] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentSpeakingId, setCurrentSpeakingId] = useState(null);
   
-  const currentTip = DAILY_TIPS[currentTipIndex];
+  // Load saved tips or generate new ones
+  const loadTips = async (forceRefresh = false) => {
+    try {
+      setRefreshing(true);
+      const now = new Date().getTime();
+      const savedData = await AsyncStorage.getItem('dailyTipsData');
+      
+      if (savedData && !forceRefresh) {
+        const { tips: savedTips, timestamp } = JSON.parse(savedData);
+        const timeSinceLastUpdate = now - timestamp;
+        
+        // If less than 24 hours have passed, use saved tips
+        if (timeSinceLastUpdate < TIPS_UPDATE_INTERVAL) {
+          setTips(savedTips);
+          setLastUpdated(new Date(timestamp));
+          setRefreshing(false);
+          return;
+        }
+      }
+      
+      // Either force refresh or it's been more than 24 hours
+      const newTips = getRandomTips(DAILY_TIPS, 5);
+      const dataToSave = {
+        tips: newTips,
+        timestamp: now
+      };
+      
+      await AsyncStorage.setItem('dailyTipsData', JSON.stringify(dataToSave));
+      setTips(newTips);
+      setLastUpdated(new Date(now));
+    } catch (error) {
+      console.error('Error loading tips:', error);
+      // Fallback to random tips if there's an error
+      setTips(getRandomTips(DAILY_TIPS, 5));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  
+  // Load tips on component mount
+  useEffect(() => {
+    loadTips();
+  }, []);
+  
+  // Handle pull to refresh
+  const onRefresh = () => {
+    loadTips(true);
+  };
+  
+  // Format last updated time
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    return `Last updated: ${lastUpdated.toLocaleDateString()} ${lastUpdated.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+  };
 
-  const speak = (language) => {
+  const speak = (tip, language) => {
     // Determine which text to read based on language
     let textToRead = '';
     let speakId = '';
     
     if (language === 'en') {
-      textToRead = `${currentTip.title}. ${currentTip.content}`;
-      speakId = 'en-speak';
-    } else if (language === 'hi' && currentTip.hindiTitle && currentTip.hindiContent) {
-      textToRead = `${currentTip.hindiTitle}. ${currentTip.hindiContent}`;
-      speakId = 'hi-speak';
+      textToRead = `${tip.title}. ${tip.content}`;
+      speakId = `en-${tip.id}`;
+    } else if (language === 'hi' && tip.hindiTitle && tip.hindiContent) {
+      textToRead = `${tip.hindiTitle}. ${tip.hindiContent}`;
+      speakId = `hi-${tip.id}`;
     } else {
       return; // No content in requested language
     }
@@ -48,96 +113,98 @@ export default function TipsScreen() {
     return () => Speech.stop();
   }, []);
 
-  const navigateTips = (direction) => {
-    Speech.stop();
-    setCurrentSpeakingId(null);
-    
-    if (direction === 'next') {
-      setCurrentTipIndex((prev) => (prev + 1) % DAILY_TIPS.length);
-    } else {
-      setCurrentTipIndex((prev) => (prev - 1 + DAILY_TIPS.length) % DAILY_TIPS.length);
-    }
-  };
+  if (tips.length === 0) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.loadingText}>Loading tips...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <View style={styles.header}>
           <MaterialCommunityIcons 
-            name={currentTip.icon} 
+            name="lightbulb-on-outline" 
             size={40} 
             color="#FFD700" 
             style={styles.icon}
           />
-          <Text style={styles.title}>Daily Legal Tip</Text>
+          <Text style={styles.title}>Daily Legal Tips</Text>
           <Text style={styles.hindiTitle}>दैनिक कानूनी सुझाव</Text>
+          {lastUpdated && (
+            <Text style={styles.lastUpdated}>
+              {formatLastUpdated()}
+            </Text>
+          )}
         </View>
 
-        <ScrollView style={styles.content}>
-          <View style={styles.tipContainer}>
-            <Text style={styles.tipTitle}>{currentTip.title}</Text>
-            <Text style={styles.tipHindiTitle}>{currentTip.hindiTitle}</Text>
-
-            <View style={styles.ttsContainer}>
-              <TouchableOpacity 
-                style={styles.ttsButton}
-                onPress={() => speak('en')}
-              >
-                <Text style={styles.ttsText}>EN</Text>
+        <ScrollView 
+          style={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#FFD700']}
+              tintColor="#FFD700"
+            />
+          }
+        >
+          {tips.map((tip, index) => (
+            <View key={`${tip.id}-${index}`} style={styles.tipContainer}>
+              <View style={styles.tipHeader}>
                 <MaterialCommunityIcons 
-                  name={currentSpeakingId === 'en-speak' ? 'volume-high' : 'volume-medium'} 
-                  size={16} 
+                  name={tip.icon} 
+                  size={24} 
                   color="#FFD700"
+                  style={styles.tipIcon}
                 />
-              </TouchableOpacity>
+                <Text style={styles.tipTitle}>{tip.title}</Text>
+              </View>
               
-              {currentTip.hindiTitle && (
+              {tip.hindiTitle && (
+                <Text style={styles.tipHindiTitle}>{tip.hindiTitle}</Text>
+              )}
+
+              <View style={styles.ttsContainer}>
                 <TouchableOpacity 
                   style={styles.ttsButton}
-                  onPress={() => speak('hi')}
+                  onPress={() => speak(tip, 'en')}
                 >
-                  <Text style={styles.ttsText}>हिं</Text>
+                  <Text style={styles.ttsText}>EN</Text>
                   <MaterialCommunityIcons 
-                    name={currentSpeakingId === 'hi-speak' ? 'volume-high' : 'volume-medium'} 
+                    name={currentSpeakingId === `en-${tip.id}` ? 'volume-high' : 'volume-medium'} 
                     size={16} 
                     color="#FFD700"
                   />
                 </TouchableOpacity>
+                
+                {tip.hindiTitle && (
+                  <TouchableOpacity 
+                    style={[styles.ttsButton, styles.hindiButton]}
+                    onPress={() => speak(tip, 'hi')}
+                  >
+                    <Text style={styles.ttsText}>हिं</Text>
+                    <MaterialCommunityIcons 
+                      name={currentSpeakingId === `hi-${tip.id}` ? 'volume-high' : 'volume-medium'} 
+                      size={16} 
+                      color="#FFD700"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <Text style={styles.tipContent}>{tip.content}</Text>
+              
+              {tip.hindiContent && (
+                <Text style={styles.tipHindiContent}>{tip.hindiContent}</Text>
               )}
+              
+              {index < tips.length - 1 && <View style={styles.divider} />}
             </View>
-
-            <Text style={styles.tipContent}>{currentTip.content}</Text>
-            
-            {currentTip.hindiContent && (
-              <>
-                <Text style={styles.tipHindiContent}>{currentTip.hindiContent}</Text>
-                <View style={styles.ttsContainer}>
-      
-                </View>
-              </>
-            )}
-          </View>
+          ))}
         </ScrollView>
-
-        <View style={styles.navigation}>
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => navigateTips('prev')}
-          >
-            <MaterialCommunityIcons name="chevron-left" size={30} color="#FFD700" />
-          </TouchableOpacity>
-          
-          <Text style={styles.pageIndicator}>
-            {currentTipIndex + 1} / {DAILY_TIPS.length}
-          </Text>
-          
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => navigateTips('next')}
-          >
-            <MaterialCommunityIcons name="chevron-right" size={30} color="#FFD700" />
-          </TouchableOpacity>
-        </View>
       </View>
     </View>
   );
@@ -235,21 +302,32 @@ const styles = StyleSheet.create({
     marginRight: 5,
     fontWeight: 'bold',
   },
-  navigation: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#FFD700',
-    paddingTop: 15,
+  divider: {
+    height: 1,
+    backgroundColor: '#FFD700',
+    marginVertical: 10,
   },
-  navButton: {
-    padding: 10,
-  },
-  pageIndicator: {
+  lastUpdated: {
     color: '#FFD700',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 5,
+  },
+  loadingText: {
+    color: '#FFD700',
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  tipIcon: {
+    marginRight: 10,
+  },
+  tipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  hindiButton: {
+    marginLeft: 10,
   },
 });
